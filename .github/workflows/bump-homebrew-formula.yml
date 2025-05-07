@@ -16,5 +16,5 @@ jobs:
           tag_prefix: 'v'
           token: ${{ secrets.PAT }}
         env:
-          HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.FG_PAT }}
+          HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.PAT }}
 

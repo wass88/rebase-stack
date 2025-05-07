@@ -8,13 +8,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Bump formula with FG‑PAT
+      - name: Bump formula
         uses: dawidd6/action-homebrew-bump-formula@v4
         with:
           tap: wass88/homebrew-rebase-stack
           formula: rebase-stack
           tag_prefix: 'v'
           token: ${{ secrets.PAT }}
+          no_fork: true
         env:
           HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.PAT }}
 

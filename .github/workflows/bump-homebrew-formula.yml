@@ -1,21 +1,19 @@
+name: Bump Homebrew formula
+
 on:
   push:
     tags:
       - 'v*'
 
 jobs:
-  bump-formula:
+  homebrew:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Bump formula
-        uses: dawidd6/action-homebrew-bump-formula@v4
+      - uses: mislav/bump-homebrew-formula-action@v3
         with:
-          tap: wass88/homebrew-rebase-stack
-          formula: rebase-stack
-          tag_prefix: 'v'
-          token: ${{ secrets.PAT }}
-          no_fork: true
+          formula-name: rebase-stack
+          homebrew-tap: wass88/homebrew-rebase-stack
+          base-branch: main
         env:
-          HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.PAT }}
+          COMMITTER_TOKEN: ${{ secrets.PAT }}
 

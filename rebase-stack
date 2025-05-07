@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+# rebase‑stack.sh — Bash 3.2 互換・tmp‑branch 検証版
+set -euo pipefail
+
+main_branch="main"      # メインブランチ名
+remote_name="origin"    # リモート名
+
+#--------------------------------------------------------------------
+# 0. 前提チェック
+#--------------------------------------------------------------------
+current_branch=$(git symbolic-ref --quiet --short HEAD) \
+  || { echo "エラー: ブランチをチェックアウトした状態で実行してください。"; exit 1; }
+
+git show-ref --quiet "refs/heads/${main_branch}" \
+  || { echo "エラー: ローカルに ${main_branch} が存在しません。"; exit 1; }
+
+#--------------------------------------------------------------------
+# 1. 分岐点取得
+#--------------------------------------------------------------------
+merge_base=$(git merge-base "${current_branch}" "${main_branch}")
+
+#--------------------------------------------------------------------
+# 2. 分岐点以降のコミット列・ブランチ列
+#--------------------------------------------------------------------
+commits=()
+while IFS= read -r line; do commits+=( "$line" ); done \
+  < <(git rev-list --reverse --first-parent "${merge_base}..${current_branch}")
+
+branches=()   # ブランチ名
+b_idx=()      # 旧コミットのインデックス
+b_old=()      # 旧 SHA
+
+for i in "${!commits[@]}"; do
+  c="${commits[$i]}"
+  while IFS= read -r ref; do
+    branches+=( "$ref" )
+    b_idx+=( "$i" )
+    b_old+=( "$c" )
+  done < <(git for-each-ref --format='%(refname:short)' refs/heads --points-at "$c")
+done
+
+echo "==== リベース対象ブランチ ===="
+printf '%s\n' "${branches[@]}"
+echo "============================="
+
+#--------------------------------------------------------------------
+# 3. リベース実行前プレビュー & 衝突検証（tmp‑branch）
+#--------------------------------------------------------------------
+echo "▼ main へ移動予定のコミット一覧"
+git log --oneline --graph "${main_branch}..${current_branch}" || true
+echo
+
+echo "▼ リベース衝突検証（tmp‑branch）"
+tmp_branch="__rebase_preview_${current_branch}_$(date +%s%N)"
+git branch --quiet "$tmp_branch" "$current_branch"
+
+if git rebase --quiet --onto "$main_branch" "$merge_base" "$tmp_branch"; then
+  result=0        # 衝突なし
+else
+  git rebase --abort >/dev/null 2>&1 || true
+  result=1        # 衝突あり
+fi
+
+# ★ 元のブランチへ戻ってから一時ブランチを削除
+git checkout --quiet "$current_branch"
+git branch -D "$tmp_branch" >/dev/null 2>&1
+
+[ $result -eq 0 ] || { echo "衝突の可能性があります。"; exit 1; }
+
+read -rp "リベース実行: 続行しますか？ [y/N] " ans
+[[ $ans =~ ^[yY]$ ]] || { echo "中断しました。"; exit 0; }
+
+git rebase --onto "${main_branch}" "${merge_base}" "${current_branch}"
+
+#--------------------------------------------------------------------
+# 4. ブランチポインタ更新前プレビュー
+#--------------------------------------------------------------------
+new_commits=()
+while IFS= read -r line; do new_commits+=( "$line" ); done \
+  < <(git rev-list --reverse --first-parent "${main_branch}..${current_branch}")
+
+echo "▼ ブランチポインタ更新プレビュー"
+for i in "${!branches[@]}"; do
+  idx="${b_idx[$i]}"
+  old_sha="${b_old[$i]}"
+  new_sha="${new_commits[$idx]:-<欠落>}"
+  printf '%-25s … %s -> %s\n' "${branches[$i]}" "${old_sha:0:7}" "${new_sha:0:7}"
+done
+
+read -rp "ローカルブランチポインタ強制更新: 続行しますか？ [y/N] " ans
+[[ $ans =~ ^[yY]$ ]] || { echo "中断しました。"; exit 0; }
+
+for i in "${!branches[@]}"; do
+  [[ "${branches[$i]}" == "${current_branch}" ]] && continue
+  idx="${b_idx[$i]}"
+  new_sha="${new_commits[$idx]}"
+  [[ -n "${new_sha:-}" ]] && git branch -f "${branches[$i]}" "${new_sha}"
+done
+
+#--------------------------------------------------------------------
+# 5. リモート push 前プレビュー
+#--------------------------------------------------------------------
+git checkout --quiet "${main_branch}"
+
+echo "▼ push --dry-run プレビュー（リベース対象ブランチ）"
+git push --force-with-lease "${remote_name}" "${branches[@]}" --dry-run
+
+read -rp "リモート強制プッシュ（リベース対象ブランチ）: 続行しますか？ [y/N] " ans
+[[ $ans =~ ^[yY]$ ]] || { echo "中断しました。"; exit 0; }
+
+git push --force-with-lease "${remote_name}" "${branches[@]}"
+
+echo "完了しました。"

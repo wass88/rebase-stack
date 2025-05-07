@@ -1,0 +1,26 @@
+name: Bump Homebrew formula
+
+on:
+  # バージョンタグ（v0.1.0 など）を push したとき自動発火
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  bump-formula:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Homebrew Tap の Formula を自動更新して PR を作成
+      - name: Bump formula in tap
+        uses: dawidd6/action-homebrew-bump-formula@v4
+        with:
+          # Personal Access Token（repo 権限）を Secrets に保存しておく
+          token: ${{ secrets.PAT }}
+          # 更新対象の Formula（ファイル名 rebase-stack.rb, クラス名 RebaseStack）
+          formula: rebase-stack
+          # タグの接頭辞。`v0.2.0` → `0.2.0` と認識させる
+          tag_prefix: "v"
+          # 自分の Tap リポジトリ
+          tap: wass88/homebrew-rebase-stack
+
